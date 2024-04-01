@@ -1,5 +1,3 @@
-// server.js
-
 const express = require('express');
 const mysql = require('mysql2');
 
@@ -21,9 +19,10 @@ connection.connect((err) => {
   console.log('Connected to MySQL database');
 });
 
-// Endpoint to fetch customer data with ID and JCNo
+app.use(express.json());
+
 app.get('/customers', (req, res) => {
-  connection.query('SELECT id, Name, Mobno, JCNo FROM customers', (error, results) => {
+  connection.query('SELECT id, Name, Mobno, JCNo, Model FROM customers', (error, results) => {
     if (error) {
       console.error('Error fetching customers:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -33,22 +32,21 @@ app.get('/customers', (req, res) => {
   });
 });
 
-// Endpoint to save remarks
 app.post('/saveRemarks', (req, res) => {
-  const { customerId, remarks } = req.body;
-  console.log('Received data for saving remarks:', { customerId, remarks }); // Log received data
-  if (!customerId || !remarks) {
-    res.status(400).json({ error: 'customerId and remarks are required' });
+  const { id, remarks } = req.body;
+  console.log('Received data for saving remarks:', { id, remarks });
+  if (!id || !remarks) {
+    res.status(400).json({ error: 'id and remarks are required' });
     return;
   }
   
-  connection.query('UPDATE customers SET Remarks = ? WHERE id = ?', [remarks, customerId], (error, results) => {
+  connection.query('UPDATE customers SET Remarks = ? WHERE id = ?', [remarks, id], (error, results) => {
     if (error) {
       console.error('Error saving remarks:', error);
       res.status(500).json({ error: 'Internal server error' });
       return;
     }
-    console.log('Remarks saved successfully for customerId:', customerId); // Log success message
+    console.log('Remarks saved successfully for id:', id);
     res.json({ success: true });
   });
 });
