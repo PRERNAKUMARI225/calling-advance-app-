@@ -1,10 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Button, Linking, StyleSheet, TextInput, Alert } from 'react-native';
+import { View, Text, Button, Linking, StyleSheet, TextInput, Alert, TouchableOpacity, Modal, FlatList } from 'react-native';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
+
+const reasonsData = [
+  "High Distance From Home",
+  "High Service Cost",
+  "High Waiting time",
+  "Out of Station",
+  "Poor Repair Quality",
+  "Service Done at other Dealership",
+  "Service Done at Private Workshop",
+  "Service Done at Same Dealer",
+  "Staff Behaviour",
+  "Vehicle Sold",
+  "Vehicle theft",
+  "Wrong number"
+];
 
 const App = () => {
   const [customers, setCustomers] = useState([]);
-  const [currentCustomerIndex, setCurrentCustomerIndex] = useState(0);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [remarks, setRemarks] = useState('');
+  const [followUpDate, setFollowUpDate] = useState(new Date());
+  const [bookingDate, setBookingDate] = useState(new Date());
+  const [isFollowUpDatePickerVisible, setFollowUpDatePickerVisibility] = useState(false);
+  const [isBookingDatePickerVisible, setBookingDatePickerVisibility] = useState(false);
+  const [isReasonsModalVisible, setReasonsModalVisible] = useState(false);
+  const [selectedReason, setSelectedReason] = useState('');
+  const [notComingReason, setNotComingReason] = useState('');
 
   useEffect(() => {
     fetchCustomers();
@@ -23,26 +46,18 @@ const App = () => {
     }
   };
 
-  const currentCustomer = customers[currentCustomerIndex];
-
-  const handleCall = () => {
-    if (currentCustomer && currentCustomer.Mobno) {
-      const { Mobno } = currentCustomer;
-      const url = `tel:${Mobno.replace(/\s/g, '')}`;
-      Linking.openURL(url);
-    } else {
-      console.error('No customer data available or phone number missing');
-    }
+  const handleCall = (Mobno) => {
+    const url = `tel:${Mobno.replace(/\s/g, '')}`;
+    Linking.openURL(url);
   };
 
-  const handleNextCustomer = () => {
-    setCurrentCustomerIndex((prevIndex) => prevIndex + 1);
-    setRemarks('');
+  const handleCustomerSelect = (customer) => {
+    setSelectedCustomer(customer);
   };
 
   const saveRemarks = async () => {
     try {
-      if (!currentCustomer || !currentCustomer.id) {
+      if (!selectedCustomer || !selectedCustomer.id) {
         console.error('No customer selected');
         return;
       }
@@ -53,43 +68,134 @@ const App = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          id: currentCustomer.id,
-          remarks: remarks,
+          id: selectedCustomer.id,
+          remarks: notComingReason ? 'Not Coming' : remarks,
+          followUpDate: followUpDate.toISOString().split('T')[0],
+          bookingDate: bookingDate.toISOString().split('T')[0],
+          selectedReason: notComingReason ? notComingReason : selectedReason,
         }),
       });
       if (!response.ok) {
         throw new Error('Failed to save remarks');
       }
-      Alert.alert('Remarks saved successfully!');
-      fetchCustomers();
-      setCurrentCustomerIndex((prevIndex) => prevIndex + 1); // Move to the next customer
-      setRemarks(''); // Clear remarks input
+      const data = await response.json();
+      if (data.success) {
+        Alert.alert('Remarks saved successfully!');
+        fetchCustomers();
+        setRemarks('');
+        setBookingDate(new Date());
+        setSelectedReason('');
+        setNotComingReason('');
+        setSelectedCustomer(null);
+        if (notComingReason) {
+          Alert.alert('Selected reason:', notComingReason); 
+        }
+      } else {
+        throw new Error('Failed to save remarks');
+      }
     } catch (error) {
       console.error('Error saving remarks:', error);
       Alert.alert('Failed to save remarks');
     }
   };
 
+  const handleReasonSelect = (reason) => {
+    setSelectedReason(reason);
+    setReasonsModalVisible(false);
+  };
+
+  const handleNotComingSelect = (reason) => {
+    setNotComingReason(reason);
+    setRemarks('Not Coming');
+    setReasonsModalVisible(false);
+  };
+
+  const handleFollowUpDateChange = (date) => {
+    setFollowUpDate(date);
+    setFollowUpDatePickerVisibility(false);
+  };
+
   return (
     <View style={styles.container}>
-      <View>
-        <Text style={styles.text}>Customer ID: {currentCustomer ? currentCustomer.id : 'Loading...'}</Text>
-        <Text style={styles.text}>Customer Name: {currentCustomer ? currentCustomer.Name : 'Loading...'}</Text>
-        <Text style={styles.text}>Customer Phone: {currentCustomer ? currentCustomer.Mobno : 'Loading...'}</Text>
-        <Text style={styles.text}>JCNo: {currentCustomer ? currentCustomer.JCNo : 'Loading...'}</Text>
-        <Text style={styles.text}>Model: {currentCustomer ? currentCustomer.Model : 'Loading...'}</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter remarks"
-          value={remarks}
-          onChangeText={setRemarks}
+      {!selectedCustomer ? (
+        <FlatList
+          data={customers}
+          renderItem={({ item }) => (
+            <TouchableOpacity onPress={() => handleCustomerSelect(item)}>
+              <View style={styles.customerItem}>
+                <Text style={styles.customerName}>{item.Name}</Text>
+                <Text>{item.Model}</Text>
+                <Text>{item.JCNo}</Text>
+                <Button title="Call" onPress={() => handleCall(item.Mobno)} />
+              </View>
+            </TouchableOpacity>
+          )}
+          keyExtractor={(item) => item.id.toString()}
         />
-      </View>
-      <View style={styles.buttonsContainer}>
-        <Button title="Call Customer" onPress={handleCall} />
-        <Button title="Next Customer" onPress={handleNextCustomer} disabled={!currentCustomer} />
-        <Button title="Save Remarks" onPress={saveRemarks} disabled={!remarks} />
-      </View>
+      ) : (
+        <View>
+          <Text style={styles.heading}>CUSTOMER DETAILS</Text>
+          <Text style={styles.text}>Customer ID: {selectedCustomer.id}</Text>
+          <Text style={styles.text}>Customer Name: {selectedCustomer.Name}</Text>
+          <Text style={styles.text}>Customer Phone: {selectedCustomer.Mobno}</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter remarks"
+            value={remarks}
+            onChangeText={setRemarks}
+          />
+          <View>
+            <Button title="Select Follow-up Date" onPress={() => setFollowUpDatePickerVisibility(true)} />
+            <DateTimePickerModal
+              isVisible={isFollowUpDatePickerVisible}
+              mode="date"
+              date={followUpDate}
+              onConfirm={handleFollowUpDateChange}
+              onCancel={() => setFollowUpDatePickerVisibility(false)}
+              minimumDate={new Date()} // Set minimum date to current date
+            />
+            <Text>{followUpDate.toDateString()}</Text>
+          </View>
+          <View>
+            <Button title="Select Booking Date" onPress={() => setBookingDatePickerVisibility(true)} />
+            <DateTimePickerModal
+              isVisible={isBookingDatePickerVisible}
+              mode="date"
+              onConfirm={(date) => { setBookingDate(date); setBookingDatePickerVisibility(false); }}
+              onCancel={() => setBookingDatePickerVisibility(false)}
+              maximumDate={new Date(new Date().getTime() + (1000 * 60 * 60 * 24 * 9))} // Set maximum date to 9 days from current date
+            />
+            <Text>{bookingDate.toDateString()}</Text>
+          </View>
+          <View style={{ marginTop: 20 }}>
+            <Button title="Not Coming Reason" onPress={() => setReasonsModalVisible(true)} />
+            <Modal
+              animationType="slide"
+              transparent={true}
+              visible={isReasonsModalVisible}
+              onRequestClose={() => setReasonsModalVisible(false)}
+            >
+              <View style={styles.modalContainer}>
+                <View style={styles.modalContent}>
+                  <FlatList
+                    data={reasonsData}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity onPress={() => handleNotComingSelect(item)}>
+                        <Text style={styles.reasonText}>{item}</Text>
+                      </TouchableOpacity>
+                    )}
+                    keyExtractor={(item, index) => index.toString()}
+                  />
+                </View>
+              </View>
+            </Modal>
+          </View>
+          <View style={styles.buttonsContainer}>
+            <Button title="Call Customer" onPress={() => handleCall(selectedCustomer.Mobno)} />
+            <Button title="Save Remarks" onPress={saveRemarks} disabled={!remarks} />
+          </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -101,21 +207,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+  heading: {
+    textAlign: 'center',
+    fontWeight: 'bold',
+    fontSize: 18,
+    marginBottom: 20,
+  },
   text: {
     marginBottom: 10,
+  },
+  input: {
+    height: 40,
+    borderColor: 'black',
+    borderWidth: 2,
+    marginBottom: 10,
+    paddingHorizontal: 10,
+    width: '100%',
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    padding: 20,
+    borderRadius: 10,
+    elevation: 5,
+    maxHeight: 300,
+  },
+  reasonText: {
+    fontSize: 16,
+    paddingVertical: 10,
+  },
+  customerItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ccc',
+  },
+  customerName: {
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   buttonsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
-  },
-  input: {
-    height: 40,
-    borderColor: 'gray',
-    borderWidth: 1,
-    marginBottom: 10,
-    paddingHorizontal: 10,
-    width: '100%',
+    marginTop: 20,
   },
 });
 

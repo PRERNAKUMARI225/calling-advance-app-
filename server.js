@@ -22,7 +22,7 @@ connection.connect((err) => {
 app.use(express.json());
 
 app.get('/customers', (req, res) => {
-  connection.query('SELECT id, Name, Mobno, JCNo, Model FROM customers', (error, results) => {
+  connection.query('SELECT id, Name, Mobno, JCNo, Model, Remarks FROM customers', (error, results) => {
     if (error) {
       console.error('Error fetching customers:', error);
       res.status(500).json({ error: 'Internal server error' });
@@ -33,22 +33,45 @@ app.get('/customers', (req, res) => {
 });
 
 app.post('/saveRemarks', (req, res) => {
-  const { id, remarks } = req.body;
-  console.log('Received data for saving remarks:', { id, remarks });
-  if (!id || !remarks) {
-    res.status(400).json({ error: 'id and remarks are required' });
+  const { id, remarks, followUpDate, bookingDate, selectedReason } = req.body;
+  console.log('Received data for saving remarks:', { id, remarks, followUpDate, bookingDate, selectedReason });
+  if (!id || !remarks || !followUpDate || !bookingDate) {
+    res.status(400).json({ error: 'id, remarks, followUpDate, and bookingDate are required' });
     return;
   }
   
-  connection.query('UPDATE customers SET Remarks = ? WHERE id = ?', [remarks, id], (error, results) => {
+  // Check if the provided customer ID exists in the database
+  connection.query('SELECT * FROM customers WHERE id = ?', [id], (error, results) => {
     if (error) {
-      console.error('Error saving remarks:', error);
+      console.error('Error checking customer existence:', error);
       res.status(500).json({ error: 'Internal server error' });
       return;
     }
-    console.log('Remarks saved successfully for id:', id);
-    res.json({ success: true });
+
+    if (results.length === 0) {
+      res.status(404).json({ error: 'Customer not found' });
+      return;
+    }
+
+    // Update remarks for the customer
+    connection.query('UPDATE customers SET Remarks = ?, FollowUpDate = ?, BookingDate = ?, SelectedReason = ? WHERE id = ?', 
+      [remarks, followUpDate, bookingDate, selectedReason, id], (error, results) => {
+        if (error) {
+          console.error('Error saving remarks:', error);
+          res.status(500).json({ error: 'Internal server error' });
+          return;
+        }
+        console.log('Remarks saved successfully for id:', id);
+        res.json({ success: true, selectedReason: selectedReason });
+      }
+    );
   });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send('Something went wrong!');
 });
 
 app.listen(PORT, () => {
